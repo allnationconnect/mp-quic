@@ -10,8 +10,6 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
-
-	"github.com/allnationconnect/websocket_tunnel/log"
 )
 
 // PathState 的补充定义
@@ -127,8 +125,8 @@ func TestFrameEncoding(t *testing.T) {
 }
 
 func TestCongestionControl(t *testing.T) {
-	log.SetLogLevel("DEBUG")
-	log.Info("开始 TestCongestionControl 测试")
+	SetLogLevel(LogLevelDebug)
+	Info("开始 TestCongestionControl 测试")
 
 	config := DefaultCubicConfig()
 	cubic := NewCubicState(config)
@@ -141,7 +139,7 @@ func TestCongestionControl(t *testing.T) {
 	if w := cubic.GetCongestionWindow(); w != config.InitialWindow {
 		t.Errorf("期望初始窗口 %d，实际为 %d", config.InitialWindow, w)
 	}
-	log.Debug("初始状态测试通过")
+	Debug("初始状态测试通过")
 
 	// 测试慢启动行为
 	packet := &Packet{
@@ -162,7 +160,7 @@ func TestCongestionControl(t *testing.T) {
 	if newWindow > safeAdd(initialWindow, maxDatagramSize) {
 		t.Error("慢启动期间窗口增加超过预期")
 	}
-	log.Debug("慢启动行为测试通过: %d -> %d", initialWindow, newWindow)
+	Debug("慢启动行为测试通过: %d -> %d", initialWindow, newWindow)
 
 	// 测试丢包行为
 	cubic.OnPacketLost(packet)
@@ -175,7 +173,7 @@ func TestCongestionControl(t *testing.T) {
 	if lossWindow >= initialWindow {
 		t.Error("丢包后窗口应该减小")
 	}
-	log.Debug("丢包行为测试通过: %d -> %d", newWindow, lossWindow)
+	Debug("丢包行为测试通过: %d -> %d", newWindow, lossWindow)
 
 	// 测试拥塞避免
 	for i := 0; i < 100; i++ {
@@ -191,7 +189,7 @@ func TestCongestionControl(t *testing.T) {
 	if finalWindow > config.MaxWindow {
 		t.Error("窗口不应超过最大限制")
 	}
-	log.Debug("拥塞避免测试通过: %d -> %d", lossWindow, finalWindow)
+	Debug("拥塞避免测试通过: %d -> %d", lossWindow, finalWindow)
 
 	// 测试快速收敛
 	if config.FastConvergence {
@@ -200,7 +198,7 @@ func TestCongestionControl(t *testing.T) {
 		if cubic.windowMax >= lastMax {
 			t.Error("快速收敛应该降低最大窗口")
 		}
-		log.Debug("快速收敛测试通过: %d -> %d", lastMax, cubic.windowMax)
+		Debug("快速收敛测试通过: %d -> %d", lastMax, cubic.windowMax)
 	}
 }
 
@@ -249,7 +247,7 @@ func initTestPath(t *testing.T, conn *Connection, local, remote *net.UDPAddr, rt
 	if err != nil {
 		t.Fatalf("添加路径失败: %v", err)
 	}
-	log.Debug("添加路径成功 - ID: %d, 本地: %v, 远程: %v",
+	Info("添加路径成功 - ID: %d, 本地: %v, 远程: %v",
 		path.ID, local.String(), remote.String())
 
 	path.mu.Lock()
@@ -271,15 +269,15 @@ func initTestPath(t *testing.T, conn *Connection, local, remote *net.UDPAddr, rt
 	conn.paths[path.ID] = path
 	conn.mu.Unlock()
 
-	log.Debug("路径初始化完成 - ID: %d, RTT: %v, 拥塞窗口: %d, 已发送字节: %d",
+	Info("路径初始化完成 - ID: %d, RTT: %v, 拥塞窗口: %d, 已发送字节: %d",
 		path.ID, rtt, path.congestionWindow, path.bytesInFlight)
 
 	return path
 }
 
 func TestPacketScheduler(t *testing.T) {
-	log.SetLogLevel("DEBUG")
-	log.Info("开始 TestPacketScheduler 测试")
+	SetLogLevel(LogLevelDebug) // 设置测试时的日志级别
+	Info("开始 TestPacketScheduler 测试")
 
 	config := &Config{
 		MaxPaths:              4,
@@ -288,7 +286,7 @@ func TestPacketScheduler(t *testing.T) {
 	}
 	conn := NewConnection(config)
 	scheduler := NewPacketScheduler(conn)
-	log.Debug("创建了新的连接和调度器")
+	Info("创建了新的连接和调度器")
 
 	// 初始化两条测试路径
 	local1 := &net.UDPAddr{IP: net.ParseIP("127.0.0.1"), Port: 1234}
@@ -301,7 +299,7 @@ func TestPacketScheduler(t *testing.T) {
 	path2 := initTestPath(t, conn, local2, remote2, 150*time.Millisecond)
 	path2.Priority = 1 // 低优先级路径
 
-	log.Debug("初始化了两条路径，当前活跃路径数量: %d", len(conn.activePaths))
+	Info("初始化了两条路径，当前活跃路径数量: %d", len(conn.activePaths))
 
 	// 测试路径选择
 	frames := []Frame{
@@ -319,7 +317,7 @@ func TestPacketScheduler(t *testing.T) {
 	if selectedPath.ID != path1.ID {
 		t.Errorf("应该选择高优先级路径，但选择了路径 %d", selectedPath.ID)
 	}
-	log.Debug("正常调度测试通过 - 选择路径: %d", selectedPath.ID)
+	Info("正常调度测试通过 - 选择路径: %d", selectedPath.ID)
 
 	// 测试拥塞窗口限制
 	path1.UpdateCongestionWindow(1000) // 设置较小的拥塞窗口
@@ -332,7 +330,7 @@ func TestPacketScheduler(t *testing.T) {
 	if selectedPath.ID != path2.ID {
 		t.Errorf("拥塞时应该选择备用路径，但选择了路径 %d", selectedPath.ID)
 	}
-	log.Debug("拥塞控制测试通过 - 切换到路径: %d", selectedPath.ID)
+	Info("拥塞控制测试通过 - 切换到路径: %d", selectedPath.ID)
 
 	// 测试丢包处理
 	scheduler.HandleLoss(packet1.Number)
@@ -340,7 +338,7 @@ func TestPacketScheduler(t *testing.T) {
 	if path1Losses == 0 {
 		t.Error("丢包计数器应该增加")
 	}
-	log.Debug("丢包处理测试通过 - 连续丢包数: %d", path1Losses)
+	Info("丢包处理测试通过 - 连续丢包数: %d", path1Losses)
 
 	// 测试确认处理
 	initialWindow := path2.GetCongestionWindow()
@@ -349,7 +347,7 @@ func TestPacketScheduler(t *testing.T) {
 	if newWindow <= initialWindow {
 		t.Error("确认后拥塞窗口应该增加")
 	}
-	log.Debug("确认处理测试通过 - 拥塞窗口: %d -> %d", initialWindow, newWindow)
+	Info("确认处理测试通过 - 拥塞窗口: %d -> %d", initialWindow, newWindow)
 
 	// 测试路径失败处理
 	for i := 0; i < 5; i++ {
@@ -358,7 +356,7 @@ func TestPacketScheduler(t *testing.T) {
 	if path1.State != PathStateDraining {
 		t.Error("多次连续丢包后路径应该进入draining状态")
 	}
-	log.Debug("路径失败处理测试通过 - 路径状态: %v", path1.State)
+	Info("路径失败处理测试通过 - 路径状态: %v", path1.State)
 }
 
 // 添加辅助函数用于路径状态检查
@@ -372,13 +370,13 @@ func checkPathState(t *testing.T, path *Path, expectedState PathState, expectedV
 	if path.validationStatus != expectedValidation {
 		t.Errorf("期望验证状态为 %v，实际得到 %v", expectedValidation, path.validationStatus)
 	}
-	log.Debug("路径状态检查 - ID: %d, 状态: %v, 验证状态: %v, RTT: %v",
+	Info("路径状态检查 - ID: %d, 状态: %v, 验证状态: %v, RTT: %v",
 		path.ID, path.State, path.validationStatus, path.metrics.SmoothedRTT)
 }
 
 // 添加辅助函数用于路径验证，带超时控制
 func validatePathWithTimeout(t *testing.T, path *Path, config ValidationConfig, timeout time.Duration) error {
-	log.Debug("开始路径验证 - ID: %d, 超时: %v, 最大重试: %d",
+	Info("开始路径验证 - ID: %d, 超时: %v, 最大重试: %d",
 		path.ID, config.Timeout, config.MaxRetries)
 
 	// 创建一个通道用于同步验证结果
@@ -387,32 +385,32 @@ func validatePathWithTimeout(t *testing.T, path *Path, config ValidationConfig, 
 
 	go func() {
 		defer func() {
-			log.Debug("验证 goroutine 结束 - ID: %d, 耗时: %v",
+			Info("验证 goroutine 结束 - ID: %d, 耗时: %v",
 				path.ID, time.Since(validationStartTime))
 		}()
 
 		// 在 goroutine 中执行验证
 		path.mu.Lock()
-		log.Debug("获取到路径锁 - ID: %d", path.ID)
+		Info("获取到路径锁 - ID: %d", path.ID)
 
 		// 保存当前验证状态
 		if path.validationTimer != nil {
 			path.validationTimer.Stop()
 			path.validationTimer = nil
-			log.Debug("停止现有验证定时器 - ID: %d", path.ID)
+			Info("停止现有验证定时器 - ID: %d", path.ID)
 		}
 
 		// 重置状态
 		path.validationStatus = false
 		path.State = PathStateInitial
-		log.Debug("重置路径状态 - ID: %d, 状态: %v, 验证: %v",
+		Info("重置路径状态 - ID: %d, 状态: %v, 验证: %v",
 			path.ID, path.State, path.validationStatus)
 
 		// 生成验证数据
 		path.challengeData = make([]byte, config.ChallengeSize)
 		if _, err := rand.Read(path.challengeData); err != nil {
 			path.mu.Unlock()
-			log.Error("生成验证数据失败 - ID: %d, 错误: %v", path.ID, err)
+			Info("生成验证数据失败 - ID: %d, 错误: %v", path.ID, err)
 			done <- fmt.Errorf("生成验证数据失败: %v", err)
 			return
 		}
@@ -420,22 +418,22 @@ func validatePathWithTimeout(t *testing.T, path *Path, config ValidationConfig, 
 		// 复制验证数据
 		challengeData := make([]byte, len(path.challengeData))
 		copy(challengeData, path.challengeData)
-		log.Debug("生成验证数据 - ID: %d, 大小: %d", path.ID, len(challengeData))
+		Info("生成验证数据 - ID: %d, 大小: %d", path.ID, len(challengeData))
 
 		// 设置定时器
 		validationTimer := time.NewTimer(config.Timeout)
 		path.validationTimer = validationTimer
-		log.Debug("设置验证定时器 - ID: %d, 超时: %v", path.ID, config.Timeout)
+		Info("设置验证定时器 - ID: %d, 超时: %v", path.ID, config.Timeout)
 
 		path.mu.Unlock()
-		log.Debug("释放路径锁 - ID: %d", path.ID)
+		Info("释放路径锁 - ID: %d", path.ID)
 
 		// 等待一小段时间后尝试验证
 		time.Sleep(10 * time.Millisecond)
-		log.Debug("开始处理验证响应 - ID: %d", path.ID)
+		Info("开始处理验证响应 - ID: %d", path.ID)
 
 		result := path.HandlePathResponse(challengeData)
-		log.Debug("验证响应处理完成 - ID: %d, 结果: %v", path.ID, result)
+		Info("验证响应处理完成 - ID: %d, 结果: %v", path.ID, result)
 
 		if result != PathValidationSuccess {
 			done <- fmt.Errorf("验证失败，结果: %v", result)
@@ -447,7 +445,7 @@ func validatePathWithTimeout(t *testing.T, path *Path, config ValidationConfig, 
 		finalState := path.State
 		finalValidation := path.validationStatus
 		path.mu.Unlock()
-		log.Debug("最终状态检查 - ID: %d, 状态: %v, 验证: %v",
+		Info("最终状态检查 - ID: %d, 状态: %v, 验证: %v",
 			path.ID, finalState, finalValidation)
 
 		if !finalValidation || finalState != PathStateActive {
@@ -460,18 +458,18 @@ func validatePathWithTimeout(t *testing.T, path *Path, config ValidationConfig, 
 	}()
 
 	// 等待验证完成或总超时
-	log.Debug("等待验证完成 - ID: %d, 最大等待时间: %v", path.ID, timeout)
+	Info("等待验证完成 - ID: %d, 最大等待时间: %v", path.ID, timeout)
 	select {
 	case err := <-done:
 		if err != nil {
-			log.Error("验证失败 - ID: %d, 错误: %v", path.ID, err)
+			Info("验证失败 - ID: %d, 错误: %v", path.ID, err)
 		} else {
-			log.Debug("验证成功完成 - ID: %d, 耗时: %v",
+			Info("验证成功完成 - ID: %d, 耗时: %v",
 				path.ID, time.Since(validationStartTime))
 		}
 		return err
 	case <-time.After(timeout):
-		log.Error("验证总超时 - ID: %d, 超时时间: %v", path.ID, timeout)
+		Info("验证总超时 - ID: %d, 超时时间: %v", path.ID, timeout)
 		// 在超时时清理状态
 		path.mu.Lock()
 		if path.validationTimer != nil {
@@ -485,14 +483,14 @@ func validatePathWithTimeout(t *testing.T, path *Path, config ValidationConfig, 
 }
 
 func TestPathLifecycle(t *testing.T) {
-	log.SetLogLevel("DEBUG")
-	log.Info("开始 TestPathLifecycle 测试")
+	SetLogLevel(LogLevelDebug)
+	Info("开始 TestPathLifecycle 测试")
 
 	// 注意：整个测试应该在 500ms 内完成，如果超过这个时间就可能是卡住了
 	testTimeout := 500 * time.Millisecond
 	testStart := time.Now()
 	defer func() {
-		log.Info("TestPathLifecycle 耗时: %v", time.Since(testStart))
+		Info("TestPathLifecycle 耗时: %v", time.Since(testStart))
 	}()
 
 	config := &Config{
@@ -501,10 +499,10 @@ func TestPathLifecycle(t *testing.T) {
 		EnablePathMigration:   true,
 		CongestionControl:     "cubic",
 	}
-	log.Debug("创建配置: MaxPaths=%d, Timeout=%v", config.MaxPaths, config.PathValidationTimeout)
+	Info("创建配置: MaxPaths=%d, Timeout=%v", config.MaxPaths, config.PathValidationTimeout)
 
 	conn := NewConnection(config)
-	log.Debug("创建了新的连接")
+	Info("创建了新的连接")
 
 	// Test path addition
 	local := &net.UDPAddr{IP: net.ParseIP("127.0.0.1"), Port: 1234}
@@ -514,7 +512,7 @@ func TestPathLifecycle(t *testing.T) {
 	if err != nil {
 		t.Fatalf("添加路径失败: %v", err)
 	}
-	log.Debug("添加路径成功，路径ID: %d", path.ID)
+	Info("添加路径成功，路径ID: %d", path.ID)
 
 	// 检查初始状态
 	checkPathState(t, path, PathStateInitial, false)
@@ -540,20 +538,19 @@ func TestPathLifecycle(t *testing.T) {
 	if err != nil {
 		t.Fatalf("移除路径失败: %v", err)
 	}
-	log.Debug("移除路径成功，剩余路径数: %d", len(conn.paths))
+	Info("移除路径成功，剩余路径数: %d", len(conn.paths))
 
 	// 确保测试在预期时间内完成
 	if elapsed := time.Since(testStart); elapsed > testTimeout {
 		t.Errorf("测试执行时间过长: %v > %v", elapsed, testTimeout)
 	}
 
-	log.Info("TestPathLifecycle 测试完成")
+	Info("TestPathLifecycle 测试完成")
 }
 
 // TestPacketSchedulingAndRetransmission tests packet scheduling and retransmission
 func TestPacketSchedulingAndRetransmission(t *testing.T) {
-	log.SetLogLevel("DEBUG")
-	log.Info("开始 TestPacketSchedulingAndRetransmission 测试")
+	Info("开始 TestPacketSchedulingAndRetransmission 测试")
 
 	conn := NewConnection(nil)
 	scheduler := NewPacketScheduler(conn)
@@ -576,7 +573,7 @@ func TestPacketSchedulingAndRetransmission(t *testing.T) {
 	conn.mu.Lock()
 	conn.activePaths = append(conn.activePaths, path1.ID)
 	conn.mu.Unlock()
-	log.Debug("添加第一条路径 - ID: %d, 状态: Active, 验证: true, RTT: %v",
+	Info("添加第一条路径 - ID: %d, 状态: Active, 验证: true, RTT: %v",
 		path1.ID, path1.metrics.SmoothedRTT)
 
 	local2 := &net.UDPAddr{IP: net.ParseIP("127.0.0.1"), Port: 1235}
@@ -596,13 +593,13 @@ func TestPacketSchedulingAndRetransmission(t *testing.T) {
 	conn.mu.Lock()
 	conn.activePaths = append(conn.activePaths, path2.ID)
 	conn.mu.Unlock()
-	log.Debug("添加第二条路径 - ID: %d, 状态: Active, 验证: true, RTT: %v",
+	Info("添加第二条路径 - ID: %d, 状态: Active, 验证: true, RTT: %v",
 		path2.ID, path2.metrics.SmoothedRTT)
 
 	// 检查路径状态
 	for _, pathID := range conn.activePaths {
 		if path, ok := conn.paths[pathID]; ok {
-			log.Debug("路径状态 - ID: %d, 状态: %v, 验证: %v, RTT: %v, 拥塞窗口: %v",
+			Info("路径状态 - ID: %d, 状态: %v, 验证: %v, RTT: %v, 拥塞窗口: %v",
 				pathID, path.State, path.validationStatus, path.metrics.SmoothedRTT,
 				path.congestionWindow)
 		}
@@ -615,7 +612,7 @@ func TestPacketSchedulingAndRetransmission(t *testing.T) {
 			Status: PathStateActive,
 		},
 	}
-	log.Debug("创建测试帧")
+	Info("创建测试帧")
 
 	// Test initial packet scheduling
 	packet1, path, err := scheduler.SchedulePacket(frames)
@@ -627,11 +624,11 @@ func TestPacketSchedulingAndRetransmission(t *testing.T) {
 	if packet1 == nil || path == nil {
 		t.Fatal("调度返回的数据包或路径为空")
 	}
-	log.Debug("第一次调度成功 - 包号: %d, 路径ID: %d", packet1.Number, path.ID)
+	Info("第一次调度成功 - 包号: %d, 路径ID: %d", packet1.Number, path.ID)
 
 	// Simulate packet loss
 	scheduler.HandleLoss(packet1.Number)
-	log.Debug("模拟丢包 - 包号: %d", packet1.Number)
+	Info("模拟丢包 - 包号: %d", packet1.Number)
 
 	// Verify packet was marked as lost
 	if _, exists := scheduler.lostPackets[packet1.Number]; !exists {
@@ -642,30 +639,30 @@ func TestPacketSchedulingAndRetransmission(t *testing.T) {
 	if len(scheduler.retransmissions[packet1.Number]) == 0 {
 		t.Error("应该安排重传")
 	}
-	log.Debug("验证重传安排")
+	Info("验证重传安排")
 
 	// Test ACK handling
 	packet2, path, err := scheduler.SchedulePacket(frames)
 	if err != nil {
 		t.Fatalf("第二次调度失败: %v", err)
 	}
-	log.Debug("第二次调度成功 - 包号: %d, 路径ID: %d", packet2.Number, path.ID)
+	Info("第二次调度成功 - 包号: %d, 路径ID: %d", packet2.Number, path.ID)
 
 	ackTime := time.Now()
 	scheduler.HandleAck(packet2.Number, ackTime)
-	log.Debug("处理确认 - 包号: %d, 时间: %v", packet2.Number, ackTime)
+	Info("处理确认 - 包号: %d, 时间: %v", packet2.Number, ackTime)
 
 	// Verify ACK processing
 	if _, exists := scheduler.sentPackets[packet2.Number]; exists {
 		t.Error("确认后数据包应该被移除")
 	}
 
-	log.Info("TestPacketSchedulingAndRetransmission 测试完成")
+	Info("TestPacketSchedulingAndRetransmission 测试完成")
 }
 
 // TestCongestionControlBehavior tests detailed congestion control behavior
 func TestCongestionControlBehavior(t *testing.T) {
-	log.SetLogLevel("DEBUG")
+	Info("开始 TestCongestionControlBehavior 测试")
 
 	config := DefaultCubicConfig()
 	cubic := NewCubicState(config)
@@ -785,14 +782,13 @@ func updatePathMetrics(t *testing.T, path *Path, rtt time.Duration) {
 	newRTT := path.metrics.SmoothedRTT
 	path.mu.Unlock()
 
-	log.Debug("更新路径指标 - ID: %d, 旧RTT: %v, 新RTT: %v",
+	Info("更新路径指标 - ID: %d, 旧RTT: %v, 新RTT: %v",
 		path.ID, oldRTT, newRTT)
 }
 
 // TestComplexPathScenarios 测试复杂的多路径场景
 func TestComplexPathScenarios(t *testing.T) {
-	log.SetLogLevel("DEBUG")
-	log.Info("开始 TestComplexPathScenarios 测试")
+	Info("开始 TestComplexPathScenarios 测试")
 
 	config := &Config{
 		MaxPaths:              8, // 支持更多路径
@@ -815,7 +811,7 @@ func TestComplexPathScenarios(t *testing.T) {
 	path1.congestionWindow = 64 * 1440 // 较大的拥塞窗口
 	path1.mu.Unlock()
 	paths = append(paths, path1)
-	log.Debug("添加主路径 - ID: %d, RTT: 20ms, 优先级: 0", path1.ID)
+	Info("添加主路径 - ID: %d, RTT: 20ms, 优先级: 0", path1.ID)
 
 	// 备用路径 - 中等延迟，中等带宽
 	local2 := &net.UDPAddr{IP: net.ParseIP("192.168.2.1"), Port: 1235}
@@ -827,7 +823,7 @@ func TestComplexPathScenarios(t *testing.T) {
 	path2.congestionWindow = 32 * 1440
 	path2.mu.Unlock()
 	paths = append(paths, path2)
-	log.Debug("添加备用路径 - ID: %d, RTT: 50ms, 优先级: 1", path2.ID)
+	Info("添加备用路径 - ID: %d, RTT: 50ms, 优先级: 1", path2.ID)
 
 	// 非对称路径 - 上行带宽低，下行带宽高
 	local3 := &net.UDPAddr{IP: net.ParseIP("192.168.3.1"), Port: 1236}
@@ -839,7 +835,7 @@ func TestComplexPathScenarios(t *testing.T) {
 	path3.congestionWindow = 16 * 1440 // 较小的上行带宽
 	path3.mu.Unlock()
 	paths = append(paths, path3)
-	log.Debug("添加非对称路径 - ID: %d, RTT: 100ms, 优先级: 2", path3.ID)
+	Info("添加非对称路径 - ID: %d, RTT: 100ms, 优先级: 2", path3.ID)
 
 	// 不稳定路径 - 高延迟，高丢包率
 	local4 := &net.UDPAddr{IP: net.ParseIP("192.168.4.1"), Port: 1237}
@@ -852,10 +848,10 @@ func TestComplexPathScenarios(t *testing.T) {
 	path4.congestionWindow = 8 * 1440
 	path4.mu.Unlock()
 	paths = append(paths, path4)
-	log.Debug("添加不稳定路径 - ID: %d, RTT: 200ms, 优先级: 3, 丢包率: 10%%", path4.ID)
+	Info("添加不稳定路径 - ID: %d, RTT: 200ms, 优先级: 3, 丢包率: 10%%", path4.ID)
 
 	// 2. 并发路径验证
-	log.Info("开始并发路径验证")
+	Info("开始并发路径验证")
 	validationConfig := ValidationConfig{
 		Timeout:       100 * time.Millisecond,
 		MaxRetries:    2,
@@ -878,36 +874,36 @@ func TestComplexPathScenarios(t *testing.T) {
 	}
 
 	wg.Wait()
-	log.Debug("所有路径验证完成，检查结果")
+	Info("所有路径验证完成，检查结果")
 
 	// 检查验证结果
 	for pathID, err := range validationResults {
 		if err != nil {
 			t.Errorf("路径 %d 验证失败: %v", pathID, err)
 		} else {
-			log.Debug("路径 %d 验证成功", pathID)
+			Info("路径 %d 验证成功", pathID)
 		}
 	}
 
 	// 3. 测试路径状态转换
-	log.Info("开始测试路径状态转换")
+	Info("开始测试路径状态转换")
 
 	// 将备用路径转换为 Standby
 	path2.UpdateState(PathStateStandby)
 	if path2.State != PathStateStandby {
 		t.Errorf("路径 %d 状态转换失败，期望 Standby，实际 %v", path2.ID, path2.State)
 	}
-	log.Debug("路径 %d 转换为 Standby 状态", path2.ID)
+	Info("路径 %d 转换为 Standby 状态", path2.ID)
 
 	// 将不稳定路径转换为 Draining
 	path4.UpdateState(PathStateDraining)
 	if path4.State != PathStateDraining {
 		t.Errorf("路径 %d 状态转换失败，期望 Draining，实际 %v", path4.ID, path4.State)
 	}
-	log.Debug("路径 %d 转换为 Draining 状态", path4.ID)
+	Info("路径 %d 转换为 Draining 状态", path4.ID)
 
 	// 4. 测试路径调度
-	log.Info("开始测试路径调度")
+	Info("开始测试路径调度")
 
 	// 确保主路径处于Active状态
 	path1.mu.Lock()
@@ -937,21 +933,21 @@ func TestComplexPathScenarios(t *testing.T) {
 		// 模拟一些包的确认和丢失
 		if i%10 == 0 {
 			scheduler.HandleLoss(packet.Number)
-			log.Debug("模拟丢包 - 包号: %d, 路径: %d", packet.Number, path.ID)
+			Info("模拟丢包 - 包号: %d, 路径: %d", packet.Number, path.ID)
 		} else {
 			scheduler.HandleAck(packet.Number, time.Now())
-			log.Debug("模拟确认 - 包号: %d, 路径: %d", packet.Number, path.ID)
+			Info("模拟确认 - 包号: %d, 路径: %d", packet.Number, path.ID)
 		}
 	}
 
 	// 检查路径选择分布
-	log.Debug("路径选择统计：")
+	Info("路径选择统计：")
 	for pathID, count := range pathSelectionCount {
-		log.Debug("路径 %d 被选择 %d 次", pathID, count)
+		Info("路径 %d 被选择 %d 次", pathID, count)
 	}
 
 	// 5. 测试路径故障转移
-	log.Info("开始测试路径故障转移")
+	Info("开始测试路径故障转移")
 
 	// 将备用路径转换为 Active 状态
 	path2.mu.Lock()
@@ -961,7 +957,7 @@ func TestComplexPathScenarios(t *testing.T) {
 	conn.activePaths = append(conn.activePaths, path2.ID)
 
 	// 模拟主路径故障
-	log.Debug("模拟主路径故障，转换为 Draining 状态")
+	Info("模拟主路径故障，转换为 Draining 状态")
 	path1.UpdateState(PathStateDraining)
 
 	// 验证调度器是否会选择备用路径
@@ -972,19 +968,19 @@ func TestComplexPathScenarios(t *testing.T) {
 	if path.ID == path1.ID {
 		t.Error("故障转移失败，调度器仍在使用故障路径")
 	}
-	log.Debug("故障转移成功，数据包被调度到路径 %d", path.ID)
+	Info("故障转移成功，数据包被调度到路径 %d", path.ID)
 
 	// 6. 清理资源
-	log.Info("开始清理资源")
+	Info("开始清理资源")
 	for _, p := range paths {
 		err := conn.RemovePath(p.ID)
 		if err != nil {
 			t.Errorf("移除路径 %d 失败: %v", p.ID, err)
 		}
-		log.Debug("移除路径 %d", p.ID)
+		Info("移除路径 %d", p.ID)
 	}
 
-	log.Info("TestComplexPathScenarios 测试完成")
+	Info("TestComplexPathScenarios 测试完成")
 }
 
 type pathMetricsData struct {
@@ -1000,8 +996,7 @@ type pathMetricsData struct {
 }
 
 func TestMassivePathScenarios(t *testing.T) {
-	log.SetLogLevel("DEBUG")
-	log.Info("开始大规模多路径压力测试")
+	Info("开始大规模多路径压力测试")
 
 	testDuration := 5*time.Minute + 10*time.Second // 5分钟测试时间加10秒缓冲
 	testStart := time.Now()
@@ -1037,7 +1032,7 @@ func TestMassivePathScenarios(t *testing.T) {
 		var pathMetrics sync.Map
 
 		// 创建路径
-		log.Debug("开始创建初始路径...")
+		Info("开始创建初始路径...")
 		var nextPathID int = 0
 		var pathMutex sync.Mutex
 
@@ -1072,7 +1067,7 @@ func TestMassivePathScenarios(t *testing.T) {
 				minRTT: time.Hour, // 初始化为一个较大的值
 			})
 
-			log.Debug("创建新路径 - ID: %d, 组: %d, RTT: %v, 丢包率: %.2f%%",
+			Info("创建新路径 - ID: %d, 组: %d, RTT: %v, 丢包率: %.2f%%",
 				path.ID, groupIdx, group.baseRTT, group.lossRate*100)
 
 			return path
@@ -1171,7 +1166,7 @@ func TestMassivePathScenarios(t *testing.T) {
 					// 随机关闭路径
 					if len(currentPaths) > 5 && rand.Float64() < 0.2 { // 20%概率关闭一个路径
 						pathToClose := currentPaths[rand.Intn(len(currentPaths))]
-						log.Debug("准备关闭路径 - ID: %d", pathToClose.ID)
+						Info("准备关闭路径 - ID: %d", pathToClose.ID)
 
 						// 更新路径状态为draining
 						pathToClose.UpdateState(PathStateDraining)
@@ -1186,7 +1181,7 @@ func TestMassivePathScenarios(t *testing.T) {
 						}
 						pathMutex.Unlock()
 
-						log.Debug("成功关闭路径 - ID: %d", pathToClose.ID)
+						Info("成功关闭路径 - ID: %d", pathToClose.ID)
 					}
 
 					// 随机添加新路径
@@ -1219,7 +1214,7 @@ func TestMassivePathScenarios(t *testing.T) {
 							}
 
 							if maxPath != nil {
-								log.Debug("触发主路径故障 - ID: %d", maxPath.ID)
+								Info("触发主路径故障 - ID: %d", maxPath.ID)
 								maxPath.mu.Lock()
 								maxPath.metrics.LossRate = 0.8   // 设置高丢包率
 								maxPath.metrics.SmoothedRTT *= 3 // 显著增加RTT
@@ -1298,7 +1293,7 @@ func TestMassivePathScenarios(t *testing.T) {
 			if time.Since(lastStatsTime) >= 5*time.Second {
 				lastStatsTime = time.Now()
 
-				log.Info("===== 测试进度报告 [%v/%v] =====", elapsed.Round(time.Second), testDuration)
+				Info("===== 测试进度报告 [%v/%v] =====", elapsed.Round(time.Second), testDuration)
 
 				// 计算总吞吐量
 				var totalBytes uint64
@@ -1311,7 +1306,7 @@ func TestMassivePathScenarios(t *testing.T) {
 					return true
 				})
 				throughput := float64(totalBytes) / elapsed.Seconds() / 1024 / 1024 // MB/s
-				log.Info("总吞吐量: %.2f MB/s, 总包数: %d", throughput, packetNumber)
+				Info("总吞吐量: %.2f MB/s, 总包数: %d", throughput, packetNumber)
 
 				// 输出每个活跃路径的统计信息
 				pathMutex.Lock()
@@ -1319,7 +1314,7 @@ func TestMassivePathScenarios(t *testing.T) {
 				copy(activePaths, paths)
 				pathMutex.Unlock()
 
-				log.Info("活跃路径数量: %d", len(activePaths))
+				Info("活跃路径数量: %d", len(activePaths))
 				for _, p := range activePaths {
 					if val, ok := pathMetrics.Load(p.ID); ok {
 						if metrics, ok := val.(*pathMetricsData); ok {
@@ -1329,7 +1324,7 @@ func TestMassivePathScenarios(t *testing.T) {
 								avgRTT := time.Duration(safeDiv(uint64(metrics.totalRTT), uint64(metrics.rttCount)))
 								lossRate := float64(metrics.lossCount) / float64(metrics.selectionCount)
 								pathThroughput := float64(metrics.totalBytes) / elapsed.Seconds() / 1024 / 1024
-								log.Info("路径 %d - 选择次数: %d, 平均RTT: %v, 最大RTT: %v, 最小RTT: %v, 丢包率: %.2f%%, 吞吐量: %.2f MB/s",
+								Info("路径 %d - 选择次数: %d, 平均RTT: %v, 最大RTT: %v, 最小RTT: %v, 丢包率: %.2f%%, 吞吐量: %.2f MB/s",
 									p.ID, metrics.selectionCount, avgRTT, metrics.maxRTT, metrics.minRTT, lossRate*100, pathThroughput)
 							}
 							metrics.mu.Unlock()
@@ -1344,10 +1339,10 @@ func TestMassivePathScenarios(t *testing.T) {
 		wg.Wait()
 
 		// 输出最终统计信息
-		log.Info("===== 测试完成 =====")
-		log.Info("总测试时长: %v", time.Since(testStart))
-		log.Info("总发送包数: %d", packetNumber)
-		log.Info("最终活动路径数: %d", len(paths))
+		Info("===== 测试完成 =====")
+		Info("总测试时长: %v", time.Since(testStart))
+		Info("总发送包数: %d", packetNumber)
+		Info("最终活动路径数: %d", len(paths))
 
 		// 清理资源
 		pathMutex.Lock()
@@ -1360,7 +1355,7 @@ func TestMassivePathScenarios(t *testing.T) {
 	// 等待测试完成或超时
 	select {
 	case <-done:
-		log.Info("测试正常完成")
+		Info("测试正常完成")
 	case <-time.After(testDuration):
 		t.Fatal("测试超时")
 	}
@@ -1375,66 +1370,65 @@ type pathTestConfig struct {
 	lossRate     float64
 }
 
+// 添加测试场景的结构定义
+type testScenario struct {
+	name        string
+	description string
+	duration    time.Duration
+	pathConfigs []pathTestConfig
+	testFunc    func(*testing.T, *Connection, *PacketScheduler, []*Path)
+}
+
+// 定义测试场景
+var scenarios = []testScenario{
+	{
+		name:        "路径故障切换",
+		description: "测试主路径故障时的自动切换能力",
+		duration:    30 * time.Second,
+		pathConfigs: []pathTestConfig{
+			{20 * time.Millisecond, 100 * 1440, 0, PathStateActive, 0.01},
+			{40 * time.Millisecond, 80 * 1440, 1, PathStateStandby, 0.02},
+		},
+		testFunc: testPathFailover,
+	},
+	{
+		name:        "网络抖动适应性",
+		description: "测试在网络条件频繁变化时的适应能力",
+		duration:    30 * time.Second,
+		pathConfigs: []pathTestConfig{
+			{30 * time.Millisecond, 80 * 1440, 0, PathStateActive, 0.02},
+			{40 * time.Millisecond, 60 * 1440, 1, PathStateActive, 0.03},
+			{60 * time.Millisecond, 40 * 1440, 1, PathStateActive, 0.04},
+		},
+		testFunc: testNetworkJitter,
+	},
+	{
+		name:        "拥塞控制响应",
+		description: "测试在不同拥塞情况下的响应能力",
+		duration:    30 * time.Second,
+		pathConfigs: []pathTestConfig{
+			{25 * time.Millisecond, 120 * 1440, 0, PathStateActive, 0.01},
+			{45 * time.Millisecond, 90 * 1440, 1, PathStateActive, 0.03},
+		},
+		testFunc: testCongestionResponse,
+	},
+	{
+		name:        "动态路径管理",
+		description: "测试动态添加和移除路径的能力",
+		duration:    30 * time.Second,
+		pathConfigs: []pathTestConfig{
+			{20 * time.Millisecond, 100 * 1440, 0, PathStateActive, 0.01},
+			{40 * time.Millisecond, 70 * 1440, 1, PathStateActive, 0.03},
+		},
+		testFunc: testDynamicPathManagement,
+	},
+}
+
 // TestMultiPathScenarios 包含多个子测试场景
 func TestMultiPathScenarios(t *testing.T) {
-	log.SetLogLevel("DEBUG")
-
-	// 定义子测试场景
-	scenarios := []struct {
-		name        string
-		description string
-		duration    time.Duration
-		pathConfigs []pathTestConfig
-		testFunc    func(t *testing.T, conn *Connection, scheduler *PacketScheduler, paths []*Path)
-	}{
-		{
-			name:        "高性能路径故障切换",
-			description: "测试当主路径性能下降时的故障切换能力",
-			duration:    30 * time.Second,
-			pathConfigs: []pathTestConfig{
-				{20 * time.Millisecond, 100 * 1440, 0, PathStateActive, 0.01},  // 主路径
-				{50 * time.Millisecond, 50 * 1440, 1, PathStateActive, 0.05},   // 备用路径1
-				{100 * time.Millisecond, 30 * 1440, 2, PathStateStandby, 0.08}, // 备用路径2
-			},
-			testFunc: testPathFailover,
-		},
-		{
-			name:        "网络抖动适应性",
-			description: "测试在网络条件频繁变化时的适应能力",
-			duration:    30 * time.Second,
-			pathConfigs: []pathTestConfig{
-				{30 * time.Millisecond, 80 * 1440, 0, PathStateActive, 0.02},
-				{40 * time.Millisecond, 60 * 1440, 1, PathStateActive, 0.03},
-				{60 * time.Millisecond, 40 * 1440, 1, PathStateActive, 0.04},
-			},
-			testFunc: testNetworkJitter,
-		},
-		{
-			name:        "拥塞控制响应",
-			description: "测试在不同拥塞情况下的响应能力",
-			duration:    30 * time.Second,
-			pathConfigs: []pathTestConfig{
-				{25 * time.Millisecond, 120 * 1440, 0, PathStateActive, 0.01},
-				{45 * time.Millisecond, 90 * 1440, 1, PathStateActive, 0.03},
-			},
-			testFunc: testCongestionResponse,
-		},
-		{
-			name:        "动态路径管理",
-			description: "测试动态添加和移除路径的能力",
-			duration:    30 * time.Second,
-			pathConfigs: []pathTestConfig{
-				{20 * time.Millisecond, 100 * 1440, 0, PathStateActive, 0.01},
-				{40 * time.Millisecond, 70 * 1440, 1, PathStateActive, 0.03},
-			},
-			testFunc: testDynamicPathManagement,
-		},
-	}
-
-	// 运行所有测试场景
 	for _, scenario := range scenarios {
 		t.Run(scenario.name, func(t *testing.T) {
-			log.Info("开始测试场景: %s - %s", scenario.name, scenario.description)
+			Info("开始测试场景: %s - %s", scenario.name, scenario.description)
 
 			config := &Config{
 				MaxPaths:              16,
@@ -1457,7 +1451,7 @@ func TestMultiPathScenarios(t *testing.T) {
 			// 等待测试完成或超时
 			select {
 			case <-done:
-				log.Info("场景 '%s' 测试完成", scenario.name)
+				Info("场景 '%s' 测试完成", scenario.name)
 			case <-time.After(scenario.duration + 5*time.Second):
 				t.Fatalf("场景 '%s' 测试超时", scenario.name)
 			}
@@ -1499,7 +1493,7 @@ func initializeTestPaths(t *testing.T, conn *Connection, configs []pathTestConfi
 		}
 
 		paths = append(paths, path)
-		log.Debug("创建测试路径 - ID: %d, RTT: %v, 带宽: %d, 优先级: %d, 状态: %v",
+		Info("创建测试路径 - ID: %d, RTT: %v, 带宽: %d, 优先级: %d, 状态: %v",
 			path.ID, cfg.baseRTT, cfg.baseBW, cfg.priority, cfg.initialState)
 	}
 
@@ -1512,7 +1506,7 @@ func testPathFailover(t *testing.T, conn *Connection, scheduler *PacketScheduler
 
 	// 记录初始吞吐量
 	initialThroughput := measurePathThroughput(t, scheduler, mainPath, 5*time.Second)
-	log.Info("主路径初始吞吐量: %.2f MB/s", initialThroughput)
+	Info("主路径初始吞吐量: %.2f MB/s", initialThroughput)
 
 	// 触发主路径性能下降
 	time.Sleep(10 * time.Second)
@@ -1520,12 +1514,12 @@ func testPathFailover(t *testing.T, conn *Connection, scheduler *PacketScheduler
 	mainPath.metrics.LossRate = 0.3   // 增加丢包率
 	mainPath.metrics.SmoothedRTT *= 3 // 增加延迟
 	mainPath.mu.Unlock()
-	log.Debug("触发主路径性能下降 - ID: %d", mainPath.ID)
+	Info("触发主路径性能下降 - ID: %d", mainPath.ID)
 
 	// 测量切换后的吞吐量
 	time.Sleep(5 * time.Second)
 	newThroughput := measurePathThroughput(t, scheduler, nil, 5*time.Second)
-	log.Info("故障切换后系统吞吐量: %.2f MB/s", newThroughput)
+	Info("故障切换后系统吞吐量: %.2f MB/s", newThroughput)
 
 	// 验证系统是否成功切换到备用路径
 	if newThroughput < initialThroughput*0.5 {
@@ -1583,7 +1577,7 @@ func testCongestionResponse(t *testing.T, conn *Connection, scheduler *PacketSch
 				path.mu.Lock()
 				originalWindow := path.congestionWindow
 				path.congestionWindow = safeDiv(path.congestionWindow, 2) // 模拟拥塞窗口收缩
-				log.Debug("触发拥塞事件 - 路径: %d, 窗口: %d -> %d",
+				Info("触发拥塞事件 - 路径: %d, 窗口: %d -> %d",
 					path.ID, originalWindow, path.congestionWindow)
 				path.mu.Unlock()
 			}
@@ -1596,7 +1590,7 @@ func testCongestionResponse(t *testing.T, conn *Connection, scheduler *PacketSch
 				if packetCount%1000 == 0 {
 					for _, p := range paths {
 						p.mu.Lock()
-						log.Debug("路径状态 - ID: %d, 拥塞窗口: %d, RTT: %v",
+						Info("路径状态 - ID: %d, 拥塞窗口: %d, RTT: %v",
 							p.ID, p.congestionWindow, p.metrics.SmoothedRTT)
 						p.mu.Unlock()
 					}
@@ -1643,7 +1637,7 @@ func testDynamicPathManagement(t *testing.T, conn *Connection, scheduler *Packet
 
 					conn.activePaths = append(conn.activePaths, newPath.ID)
 					paths = append(paths, newPath)
-					log.Debug("添加新路径 - ID: %d", newPath.ID)
+					Info("添加新路径 - ID: %d", newPath.ID)
 				}
 			}
 
@@ -1655,7 +1649,7 @@ func testDynamicPathManagement(t *testing.T, conn *Connection, scheduler *Packet
 				err := conn.RemovePath(pathToRemove.ID)
 				if err == nil {
 					paths = append(paths[:pathIndex], paths[pathIndex+1:]...)
-					log.Debug("移除路径 - ID: %d", pathToRemove.ID)
+					Info("移除路径 - ID: %d", pathToRemove.ID)
 				}
 			}
 		}
@@ -1683,8 +1677,7 @@ func measurePathThroughput(t *testing.T, scheduler *PacketScheduler, targetPath 
 
 // TestSafeMathOperations tests the safe math operations
 func TestSafeMathOperations(t *testing.T) {
-	log.SetLogLevel("DEBUG")
-	log.Info("开始 TestSafeMathOperations 测试")
+	Info("开始 TestSafeMathOperations 测试")
 
 	tests := []struct {
 		name     string
@@ -1717,15 +1710,14 @@ func TestSafeMathOperations(t *testing.T) {
 				t.Errorf("%s: %d %s %d = %d; 期望 %d",
 					tt.name, tt.a, tt.op, tt.b, result, tt.expected)
 			}
-			log.Debug("%s: %d %s %d = %d", tt.name, tt.a, tt.op, tt.b, result)
+			Info("%s: %d %s %d = %d", tt.name, tt.a, tt.op, tt.b, result)
 		})
 	}
 }
 
 // TestPathMetricsOverflow tests the overflow protection in PathMetrics
 func TestPathMetricsOverflow(t *testing.T) {
-	log.SetLogLevel("DEBUG")
-	log.Info("开始 TestPathMetricsOverflow 测试")
+	Info("开始 TestPathMetricsOverflow 测试")
 
 	metrics := &PathMetrics{}
 
@@ -1735,7 +1727,7 @@ func TestPathMetricsOverflow(t *testing.T) {
 	if sent != 1000 {
 		t.Errorf("期望发送字节数为 1000，实际为 %d", sent)
 	}
-	log.Debug("正常字节计数测试通过: %d", sent)
+	Info("正常字节计数测试通过: %d", sent)
 
 	// 测试溢出保护
 	metrics.AddBytesSent(math.MaxUint64)
@@ -1743,7 +1735,7 @@ func TestPathMetricsOverflow(t *testing.T) {
 	if sent != math.MaxUint64 {
 		t.Errorf("期望发送字节数为 MaxUint64，实际为 %d", sent)
 	}
-	log.Debug("溢出保护测试通过: %d", sent)
+	Info("溢出保护测试通过: %d", sent)
 
 	// 测试接收字节计数
 	metrics.AddBytesReceived(2000)
@@ -1751,7 +1743,7 @@ func TestPathMetricsOverflow(t *testing.T) {
 	if received != 2000 {
 		t.Errorf("期望接收字节数为 2000，实际为 %d", received)
 	}
-	log.Debug("接收字节计数测试通过: %d", received)
+	Info("接收字节计数测试通过: %d", received)
 
 	// 测试并发安全性
 	var wg sync.WaitGroup
@@ -1774,5 +1766,5 @@ func TestPathMetricsOverflow(t *testing.T) {
 	if received < uint64(concurrent)*1000 {
 		t.Errorf("并发字节计数不准确: 接收 %d", received)
 	}
-	log.Debug("并发安全性测试通过: 发送 %d, 接收 %d", sent, received)
+	Info("并发安全性测试通过: 发送 %d, 接收 %d", sent, received)
 }

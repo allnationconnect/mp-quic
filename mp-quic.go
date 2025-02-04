@@ -12,8 +12,6 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
-
-	"github.com/allnationconnect/websocket_tunnel/log"
 )
 
 // PathID represents a unique identifier for a path
@@ -254,7 +252,7 @@ func (c *Connection) AddPath(local, remote net.Addr) (*Path, error) {
 	defer c.pathsMutex.Unlock()
 
 	if len(c.paths) >= int(c.config.MaxPaths) {
-		log.Warn("Failed to add path: too many paths (max: %d)", c.config.MaxPaths)
+		Warn("Failed to add path: too many paths (max: %d)", c.config.MaxPaths)
 		return nil, ErrTooManyPaths
 	}
 
@@ -266,7 +264,7 @@ func (c *Connection) AddPath(local, remote net.Addr) (*Path, error) {
 	}
 
 	c.paths[path.ID] = path
-	log.Info("Added new path %d: %s -> %s", path.ID, local.String(), remote.String())
+	Info("Added new path %d: %s -> %s", path.ID, local.String(), remote.String())
 	return path, nil
 }
 
@@ -805,7 +803,7 @@ func (p *Path) StartValidation(config ValidationConfig) error {
 	defer p.mu.Unlock()
 
 	if p.validationStatus {
-		log.Debug("Path %d already validated", p.ID)
+		Debug("Path %d already validated", p.ID)
 		return nil
 	}
 
@@ -815,7 +813,7 @@ func (p *Path) StartValidation(config ValidationConfig) error {
 
 	p.challengeData = make([]byte, config.ChallengeSize)
 	if _, err := rand.Read(p.challengeData); err != nil {
-		log.Error("Failed to generate challenge data for path %d: %v", p.ID, err)
+		Warn("Failed to generate challenge data for path %d: %v", p.ID, err)
 		return fmt.Errorf("failed to generate challenge data: %w", err)
 	}
 
@@ -824,7 +822,7 @@ func (p *Path) StartValidation(config ValidationConfig) error {
 		p.handleValidationTimeout(config)
 	})
 
-	log.Info("Started validation for path %d, timeout: %v", p.ID, config.Timeout)
+	Debug("Started validation for path %d, timeout: %v", p.ID, config.Timeout)
 	return nil
 }
 
@@ -834,19 +832,19 @@ func (p *Path) HandlePathResponse(response []byte) PathValidationResult {
 
 	if p.validationStatus {
 		p.mu.Unlock()
-		log.Debug("Path %d already validated", p.ID)
+		Debug("Path %d already validated", p.ID)
 		return PathValidationSuccess
 	}
 
 	if p.challengeData == nil {
 		p.mu.Unlock()
-		log.Warn("No challenge data for path %d", p.ID)
+		Warn("No challenge data for path %d", p.ID)
 		return PathValidationFailed
 	}
 
 	if !bytes.Equal(response, p.challengeData) {
 		p.mu.Unlock()
-		log.Warn("Challenge response mismatch for path %d", p.ID)
+		Warn("Challenge response mismatch for path %d", p.ID)
 		return PathValidationFailed
 	}
 
@@ -860,7 +858,7 @@ func (p *Path) HandlePathResponse(response []byte) PathValidationResult {
 	p.mu.Unlock()
 
 	p.UpdateState(PathStateActive)
-	log.Info("Path %d validation successful", p.ID)
+	Debug("Path %d validation successful", p.ID)
 	return PathValidationSuccess
 }
 
@@ -879,6 +877,7 @@ func (p *Path) handleValidationTimeout(config ValidationConfig) {
 
 	if shouldDrain {
 		p.UpdateState(PathStateDraining)
+		Debug("Path %d validation failed after %d retries", p.ID, p.validationRetries)
 		return
 	}
 
@@ -1166,7 +1165,7 @@ func (ps *PacketScheduler) logPathMetrics(path *Path, event string, packetNumber
 	metrics.LossRate = path.metrics.LossRate
 	path.metrics.mu.RUnlock()
 
-	log.Debug("Path Metrics - Event: %s, Path: %d, Packet: %d, RTT: %v, SRTT: %v, InFlight: %d/%d, Loss: %.2f%%",
+	Debug("Path Metrics - Event: %s, Path: %d, Packet: %d, RTT: %v, SRTT: %v, InFlight: %d/%d, Loss: %.2f%%",
 		metrics.Event,
 		metrics.PathID,
 		metrics.PacketNumber,
@@ -1184,7 +1183,7 @@ func (ps *PacketScheduler) SchedulePacket(frames []Frame) (*Packet, *Path, error
 
 	path := ps.selectBestPath()
 	if path == nil {
-		log.Warn("No available path for packet scheduling")
+		Warn("No available path for packet scheduling")
 		return nil, nil, ErrNoAvailablePath
 	}
 
@@ -1223,6 +1222,7 @@ func (ps *PacketScheduler) selectBestPath() *Path {
 		}
 	}
 
+	Debug("Selected best path %d with score %.2f", bestPath.ID, bestScore)
 	return bestPath
 }
 
@@ -1310,13 +1310,13 @@ func (ps *PacketScheduler) HandleLoss(packetNumber PacketNumber) {
 
 	packet, ok := ps.sentPackets[packetNumber]
 	if !ok {
-		log.Debug("忽略未知数据包的丢失事件: %d", packetNumber)
+		Warn("忽略未知数据包的丢失事件: %d", packetNumber)
 		return
 	}
 
 	path := ps.conn.paths[packet.PathID]
 	if path == nil {
-		log.Debug("忽略已删除路径上的丢失事件: %d", packet.PathID)
+		Warn("忽略已删除路径上的丢失事件: %d", packet.PathID)
 		return
 	}
 
@@ -1343,7 +1343,7 @@ func (ps *PacketScheduler) HandleLoss(packetNumber PacketNumber) {
 	if packet.Retries < 3 {
 		ps.scheduleRetransmission(packet)
 	} else {
-		log.Warn("数据包 %d 在 %d 次重试后放弃", packetNumber, packet.Retries)
+		Warn("数据包 %d 在 %d 次重试后放弃", packetNumber, packet.Retries)
 	}
 }
 
@@ -1354,7 +1354,7 @@ func (ps *PacketScheduler) activateStandbyPath() {
 		if path.State == PathStateStandby && path.validationStatus {
 			path.UpdateState(PathStateActive)
 			ps.conn.activePaths = append(ps.conn.activePaths, path.ID)
-			log.Info("激活备用路径 %d", path.ID)
+			Debug("激活备用路径 %d", path.ID)
 			return
 		}
 	}
