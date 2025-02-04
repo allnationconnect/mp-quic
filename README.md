@@ -25,7 +25,7 @@ go get github.com/allnationconnect/mp-quic
 ### Creating a Connection
 
 ```go
-import "github.com/allnationconnect/websocket_tunnel/mp-quic"
+import "github.com/allnationconnect/mp-quic"
 
 // Create a connection with default configuration
 conn := mpquic.NewConnection(nil)
